@@ -29,12 +29,14 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew :androidApp:assembleDebug
+        run: ./gradlew :androidApp:assembleDebug --stacktrace --info 2>&1 | tail -200
 
       - name: Build Release APK
-        run: ./gradlew :androidApp:assembleRelease
+        if: success()
+        run: ./gradlew :androidApp:assembleRelease --stacktrace 2>&1 | tail -100
 
       - name: Get version info
+        if: success()
         id: version
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
@@ -43,18 +45,21 @@ jobs:
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
 
       - name: Upload Debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LeChenMusic-Debug-${{ steps.version.outputs.version_name }}
           path: androidApp/build/outputs/apk/debug/*.apk
 
       - name: Upload Release APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LeChenMusic-Release-${{ steps.version.outputs.version_name }}
           path: androidApp/build/outputs/apk/release/*.apk
 
       - name: Create Release and Upload APK
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version_name }}
