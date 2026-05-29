@@ -1,0 +1,78 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew :androidApp:assembleDebug
+
+      - name: Build Release APK
+        run: ./gradlew :androidApp:assembleRelease
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode' androidApp/build.gradle.kts | sed 's/.*= //' | tr -d ' ')
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LeChenMusic-Debug-${{ steps.version.outputs.version_name }}
+          path: androidApp/build/outputs/apk/debug/*.apk
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LeChenMusic-Release-${{ steps.version.outputs.version_name }}
+          path: androidApp/build/outputs/apk/release/*.apk
+
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version_name }}
+          name: "LeChenMusic ${{ steps.version.outputs.version_name }}"
+          body: |
+            ## LeChenMusic ${{ steps.version.outputs.version_name }}
+            
+            ### Android
+            - 下载 `app-debug.apk` 安装体验
+            - 下载 `app-release.apk` 正式版
+            
+            ### HarmonyOS (鸿蒙)
+            - 鸿蒙端需要使用 DevEco Studio 编译
+            - 打开 `harmonyApp/` 目录，Sync → Build → 生成 HAP
+          files: |
+            androidApp/build/outputs/apk/debug/*.apk
+            androidApp/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
