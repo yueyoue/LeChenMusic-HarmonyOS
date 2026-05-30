@@ -1,6 +1,12 @@
 import { router } from '@kit.ArkUI';
 import { apiClient, Song } from '../common/SubsonicApi';
 import { media } from '@kit.MediaKit';
+import { avSession } from '@kit.AVSessionKit';
+import { image } from '@kit.ImageKit';
+import { avSessionManager } from '../common/AVSessionManager';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+
+const TAG = 'PlayerPage';
 
 @Entry
 @Component
@@ -11,6 +17,94 @@ struct PlayerPage {
   @State duration: number = 0;
   @State lyrics: string = '';
   @State currentView: number = 0; // -1=lyrics, 0=cover, 1=similar
+
+  private audioPlayer: media.AVPlayer | null = null;
+
+  async aboutToAppear(): Promise<void> {
+    // 创建 AVSession
+    try {
+      const context = getContext(this);
+      await avSessionManager.createSession(context);
+
+      // 设置回调 - 锁屏控件的按钮事件
+      avSessionManager.setCallbacks({
+        onPlay: () => {
+          this.isPlaying = true;
+          this.audioPlayer?.play();
+          this.updatePlaybackState();
+        },
+        onPause: () => {
+          this.isPlaying = false;
+          this.audioPlayer?.pause();
+          this.updatePlaybackState();
+        },
+        onNext: () => {
+          // TODO: 播放下一曲
+          hilog.info(0x0000, TAG, 'Next track requested');
+        },
+        onPrevious: () => {
+          // TODO: 播放上一曲
+          hilog.info(0x0000, TAG, 'Previous track requested');
+        },
+        onSeek: (position: number) => {
+          if (this.audioPlayer) {
+            this.audioPlayer.seek(position);
+            this.currentPosition = position;
+            this.updatePlaybackState();
+          }
+        }
+      });
+
+      await avSessionManager.activate();
+      hilog.info(0x0000, TAG, 'AVSession initialized');
+    } catch (err) {
+      hilog.error(0x0000, TAG, `AVSession init failed: ${JSON.stringify(err)}`);
+    }
+  }
+
+  async aboutToDisappear(): Promise<void> {
+    // 销毁 AVSession
+    await avSessionManager.destroy();
+
+    // 释放播放器
+    if (this.audioPlayer) {
+      this.audioPlayer.release();
+      this.audioPlayer = null;
+    }
+  }
+
+  // 更新锁屏播放状态
+  private updatePlaybackState(): void {
+    avSessionManager.setPlaybackState({
+      state: this.isPlaying ? avSession.PlaybackState.PLAYBACK_STATE_PLAY :
+        avSession.PlaybackState.PLAYBACK_STATE_PAUSE,
+      position: this.currentPosition,
+      speed: 1.0
+    });
+  }
+
+  // 更新锁屏歌曲信息
+  private async updateMetadata(): Promise<void> {
+    if (!this.currentSong) return;
+
+    // 尝试获取封面图片的 PixelMap
+    let coverPixelMap: image.PixelMap | undefined = undefined;
+    try {
+      const coverUrl = apiClient.getCoverArtUrl(this.currentSong.coverArt || this.currentSong.id);
+      // 注意：实际项目中需要通过网络下载图片并解码为 PixelMap
+      // 这里先不传封面，锁屏会显示默认图标
+    } catch (err) {
+      hilog.error(0x0000, TAG, `Failed to load cover: ${JSON.stringify(err)}`);
+    }
+
+    await avSessionManager.setMetadata(
+      this.currentSong.title,
+      this.currentSong.artist || '未知歌手',
+      this.currentSong.album || '未知专辑',
+      this.currentSong.duration * 1000, // 转换为毫秒
+      coverPixelMap
+    );
+  }
 
   build() {
     Column() {
@@ -186,7 +280,11 @@ struct PlayerPage {
           .height(64)
           .shape({ borderRadius: 32 })
           .backgroundColor('#1DB954')
-          .onClick(() => { this.isPlaying = !this.isPlaying; })
+          .onClick(() => {
+            this.isPlaying = !this.isPlaying;
+            // 同步更新 AVSession 播放状态
+            this.updatePlaybackState();
+          })
 
           Button() {
             SymbolGlyph($r('sys.symbol.forward_fill'))

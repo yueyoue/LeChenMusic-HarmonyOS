@@ -7,6 +7,10 @@
     {
       "name": "entry_desc",
       "value": "乐尘音乐"
+    },
+    {
+      "name": "background_audio_reason",
+      "value": "用于锁屏播放控制和后台音乐播放"
     }
   ]
 }
